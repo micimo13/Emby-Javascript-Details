@@ -3,6 +3,9 @@
 
     /******************** user config ********************/
     var openaiApiKey = ''; //OpenAI API Key
+    var openaiUrl = 'https://api.openai.com/v1';
+    var openaiModel = 'gpt-4.1';
+    var openaiPrompt = '你是一位专业的影视内容翻译人员。请将以下日文影片标题或简介翻译为自然流畅、符合中文阅读习惯的中文。\n\n翻译要求：\n1. 在充分理解原文语境的基础上进行翻译，避免逐字直译，也不得歪曲原意或随意删减内容。\n2. 表达要自然流畅，符合中文语感，可适度润色。\n3. 原文中的英文关键词可保留；其余日文内容需全部翻译为中文。\n4. 人名优先使用中文圈常见译名；如无法确认，则保留原文姓名，不得自行编造。\n\n输出要求：\n仅输出翻译后的中文文本，不要添加任何解释或说明。\n\n请翻译以下内容：\n{content}'; // 默认通用翻译提示词；可在 config.json 的 openaiPrompt 中覆盖
     var nameMap = {};
     var fetchJavDbFlag = true; //enable javdb scrap
     var getTrailerFromCache = true; //enable reading from cache
@@ -14,8 +17,8 @@
 
     const show_pages = ["Movie", "Series", "Season", "BoxSet", "Person", "Trailer"];
 
-    var item, actorName, directorName, viewnode;
-    var prefixDic = {}, mountMatch = {}, deviceProfile = {};
+    var item, actor, director, viewnode;
+    var prefixDic = {}, mountMatch = {};
     //var adminUserId = ''; //Emby User ID
 
     
@@ -115,16 +118,97 @@
 
     // 评分区域优化样式（iPhone 不加载）
     const ratingCss = isIPhone ? '' : `
-.starRatingContainer{background:linear-gradient(135deg,rgba(255,215,0,0.2),rgba(255,180,0,0.1))!important;padding:6px 12px!important;border-radius:20px!important;border:1px solid rgba(255,215,0,0.3)!important}.starRatingContainer .starIcon{color:#ffd700!important;text-shadow:0 0 8px rgba(255,215,0,0.5)}.mediaInfoCriticRating{background:linear-gradient(135deg,rgba(139,92,246,0.2),rgba(109,40,217,0.1))!important;padding:6px 12px!important;border-radius:20px!important;border:1px solid rgba(139,92,246,0.3)!important}.mediaInfoCriticRatingFresh{filter:drop-shadow(0 0 4px rgba(139,92,246,0.5))}.detail-mediaInfoPrimary .mediaInfoItem:not(.media-info-item){padding:4px 12px!important;border-radius:15px!important;background:rgba(139,92,246,0.08)!important;margin:3px!important;transition:all 0.2s ease;font-size:0.85em}.detail-mediaInfoPrimary .mediaInfoItem:not(.media-info-item):hover{background:rgba(139,92,246,0.18)!important;transform:scale(1.02)}.detail-mediaInfoPrimary .mediaInfoItem-border{border:1.5px solid rgba(255,255,255,0.6)!important;background:transparent!important;border-radius:4px!important;padding:2px 8px!important}
+.starRatingContainer{background:linear-gradient(135deg,rgba(255,215,0,0.2),rgba(255,180,0,0.1))!important;padding:6px 12px!important;border-radius:20px!important;border:1px solid rgba(255,215,0,0.3)!important}.starRatingContainer .starIcon{color:#ffd700!important;text-shadow:0 0 8px rgba(255,215,0,0.5)}.mediaInfoCriticRating{background:linear-gradient(135deg,rgba(var(--edp-info-rgb),0.22),rgba(var(--edp-info-rgb),0.08))!important;padding:6px 12px!important;border-radius:20px!important;border:1px solid rgba(var(--edp-info-rgb),0.35)!important}.mediaInfoCriticRatingFresh{filter:drop-shadow(0 0 4px rgba(var(--edp-info-rgb),0.55))}.detail-mediaInfoPrimary .mediaInfoItem:not(.media-info-item){padding:4px 12px!important;border-radius:15px!important;background:rgba(var(--edp-accent-rgb),0.08)!important;margin:3px!important;transition:all 0.2s ease;font-size:0.85em}.detail-mediaInfoPrimary .mediaInfoItem:not(.media-info-item):hover{background:rgba(var(--edp-accent-rgb),0.18)!important;transform:scale(1.02)}.detail-mediaInfoPrimary .mediaInfoItem-border{border:1.5px solid rgba(255,255,255,0.6)!important;background:transparent!important;border-radius:4px!important;padding:2px 8px!important}
 `;
 
-    const edpCss = `${ratingCss}
+    const edpCss = `@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Chivo+Mono:wght@400;600;700&display=swap');
+:root{
+/* ===== EDP design tokens (purple identity) ===== */
+--edp-accent:#8b5cf6;--edp-accent-deep:#6d28d9;--edp-accent-bright:#a78bfa;--edp-accent-rgb:139,92,246;
+--edp-grad-accent:linear-gradient(135deg,#8b5cf6,#6d28d9);
+--edp-grad-cool:linear-gradient(135deg,rgba(124,92,255,.32),rgba(59,130,246,.30));
+--edp-gold:#ffd700;--edp-gold-2:#ffb300;--edp-info:#00c8ff;--edp-info-rgb:0,200,255;--edp-danger:#ef4444;
+--edp-glass:rgba(255,255,255,.06);--edp-glass-strong:rgba(255,255,255,.15);--edp-glass-border:rgba(255,255,255,.12);
+--edp-surface-1:#1a1a2e;--edp-surface-2:#16213e;
+--edp-r-sm:8px;--edp-r-card:12px;--edp-r-pill:20px;--edp-blur:14px;
+--edp-shadow-card:0 8px 24px rgba(0,0,0,.35);--edp-glow-accent:0 0 16px rgba(139,92,246,.45);
+--edp-ease:cubic-bezier(.4,0,.2,1);--edp-dur:.3s;
+--edp-font-display:'Bricolage Grotesque','PingFang SC','Microsoft YaHei',sans-serif;
+--edp-font-code:'Chivo Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+${ratingCss}
 .edp-has-trailer{position:relative;box-shadow:0 0 8px 2px rgba(59,130,246,0.35);transition:box-shadow 0.3s ease-in-out;border-radius:8px}.cardBox:hover .edp-has-trailer,.edp-has-trailer:hover{box-shadow:0 0 10px 3px rgba(96,165,250,0.5);transition:box-shadow 0.2s ease-in-out}
 @keyframes edpCardFadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}.edp-card-enter{animation:edpCardFadeUp 0.4s ease both}.edp-slider-bg .cardBox{transition:transform 0.3s ease,box-shadow 0.3s ease}.edp-slider-bg .cardBox:hover{transform:translateY(-6px);box-shadow:0 8px 24px rgba(0,0,0,0.35)}
-.edp-card-meta{display:flex;justify-content:space-between;align-items:center}.edp-card-date{opacity:0.7}.edp-score-badge{padding:1px 8px;border-radius:10px;font-size:0.85em;font-weight:600;line-height:1.5}.edp-score-gold{background:linear-gradient(135deg,#ffd700,#ffb300);color:#1a1a1a}.edp-score-high{background:linear-gradient(135deg,#00c8ff,#0090ff);color:#fff}.edp-score-mid{background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.8)}.edp-score-low{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.5)}.edp-score-none{display:none}.noUncensored{opacity:1;transition:color 0.3s,transform 0.3s,box-shadow 0.3s,filter 0.3s}.noUncensored .button-text,.noUncensored .button-icon{color:grey!important}.melt-away{animation:sandMeltAnimation 1s ease-out forwards}@keyframes sandMeltAnimation{0%{opacity:1}100%{opacity:0}}@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.btn-status{display:inline-block;vertical-align:middle;margin-left:4px}.btn-spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}.btn-check{display:inline-block;width:18px;height:18px;vertical-align:middle}.my-fanart-image{display:inline-block;margin:8px 10px 20px 10px;vertical-align:top;border-radius:8px;height:27vh;transition:transform 0.3s ease,filter 0.3s ease;min-height:180px}.my-fanart-image-slider{height:20vh!important}.my-fanart-image:hover{transform:scale(1.03);filter:brightness(80%)}.edp-modal{display:none;position:fixed;z-index:1;left:0;top:0;width:100%;height:100%;overflow:hidden;background-color:rgb(0 0 0 / .8);justify-content:center;align-items:center}.edp-modal-content{margin:auto;max-width:70%;max-height:70%;overflow:hidden;opacity:0;transition:opacity 0.3s ease}@media (max-width:768px){.edp-modal-content{max-width:80%;max-height:80%}}.edp-modal-closing .edp-modal-content{animation-name:edpShrinkRotate;animation-duration:0.3s;animation-timing-function:ease-out}.edp-close{color:#fff;position:absolute;width:45px;height:45px;display:flex;justify-content:center;align-items:center;top:30px;right:30px;font-size:30px;font-weight:700;cursor:pointer;transition:background-color 0.3s,transform 0.3s,padding 0.3s;border-radius:50%;padding:0;background-color:rgb(0 0 0 / .5);user-select:none;caret-color:#fff0}.prev,.next{position:absolute;width:40px;height:40px;line-height:40px;justify-content:center;align-items:center;display:flex;top:50%;background-color:rgb(0 0 0 / .5);color:#fff;border:none;cursor:pointer;font-size:35px;font-weight:700;transform:translateY(-50%) translateX(-50%);transition:background-color 0.3s,transform 0.3s,padding 0.3s;border-radius:50%;padding:35px}.prev{left:80px}.next{right:20px}.prev:hover,.next:hover{background-color:rgb(255 255 255 / .3);padding:35px}.edp-close:hover{background-color:rgb(255 255 255 / .3)}@keyframes edpShrinkRotate{0%{transform:scale(1)}100%{transform:scale(0)}}.click-smaller{transform:scale(.9) translate(-50%,-50%);transition:transform 0.2s}.prev.disabled,.next.disabled{color:grey!important;cursor:default}@keyframes shake{0%{transform:translateX(0)}25%{transform:translateX(-10px)}50%{transform:translateX(10px)}75%{transform:translateX(-10px)}100%{transform:translateX(0)}}.edp-modal-caption{position:fixed;bottom:132px;left:50%;transform:translateX(-50%);text-align:center;font-size:16px;color:#fff;background-color:rgb(0 0 0 / .6);padding:5px 10px;border-radius:5px}@media screen and (max-width:480px){.edp-modal-caption{bottom:160px}}.modal-thumbs{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:0 44px;max-width:80vw;height:84px;overflow-x:auto;overflow-y:hidden;background:rgb(0 0 0/.6);border-radius:10px;scrollbar-width:none;align-items:center;scroll-behavior:smooth;-webkit-mask-image:linear-gradient(to right,transparent 0%,black 14%,black 86%,transparent 100%);mask-image:linear-gradient(to right,transparent 0%,black 14%,black 86%,transparent 100%)}.modal-thumbs::-webkit-scrollbar{display:none}.modal-thumbs img{height:50px;border-radius:4px;cursor:pointer;opacity:.5;transform:scale(1);transform-origin:center;transition:height 0.25s ease-out,transform 0.25s ease-out,opacity 0.25s ease;border:none;flex-shrink:0}.modal-thumbs img:hover{opacity:.78}.edp-video{position:absolute;width:100%;height:100%;object-fit:contain;z-index:1;pointer-events:auto;transition:opacity 0.5s ease}.cardOverlayContainer>.fab,.cardOverlayContainer>.chkItemSelectContainer,.cardOverlayContainer>.cardOverlayButton-br{z-index:2}.copy-link{color:lightblue;cursor:pointer;display:inline-block;transition:transform 0.1s ease}.copy-link:active{transform:scale(.95)}.media-info-item{display:block;width:100%;margin-top:10px;text-align:left}.media-info-item a{padding:5px 10px;background:rgb(255 255 255 / .15);margin-bottom:5px;margin-right:5px;-webkit-backdrop-filter:blur(5em);backdrop-filter:blur(5em);font-weight:600;font-family:'Poppins',sans-serif;transition:transform 0.2s ease,background-color 0.3s ease,box-shadow 0.3s ease,color 0.3s ease;text-decoration:none;color:#fff;border-radius: 20px}.media-info-item a:hover{transform:scale(1.05);background:linear-gradient(135deg,rgb(255 0 150 / .3),rgb(0 150 255 / .3));box-shadow:0 4px 15px rgb(0 0 0 / .2),0 0 10px rgb(0 150 255 / .5)}.pageButton{cursor:pointer;padding:6px 14px;background:rgb(255 255 255 / .15);border-radius:15px;box-shadow:0 2px 6px rgba(0,0,0,0.2);transition:all 0.3s ease;backdrop-filter:blur(10px);border:1px solid rgb(255 255 255 / .2)}.pageButton:hover{background:rgb(255 255 255 / .25);box-shadow:0 4px 12px rgba(0,0,0,0.3);transform:scale(1.03)}#pageInput-actorPage::-webkit-inner-spin-button,#pageInput-actorPage::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}#pageInput-actorPage{-moz-appearance:textfield;appearance:none;height:auto;text-align:center;padding:6px 10px;font-family:inherit;font-size:inherit;font-weight:inherit;line-height:inherit;background:rgb(255 255 255 / .1);border:1px solid rgb(255 255 255 / .2);border-radius:10px;color:#fff;width:50px;transition:all 0.3s ease}#pageInput-actorPage:focus{outline:none;border-color:rgb(255 255 255 / .4);box-shadow:0 0 8px rgba(255,255,255,0.2)}#filterDropdown{width:auto;backdrop-filter:blur(10px);color:#fff;transition:all 0.3s ease;margin-left:10px;font-family:inherit;padding:6px 12px;font-weight:inherit;line-height:inherit;border:1px solid rgba(139,92,246,0.3);background:linear-gradient(135deg,rgba(139,92,246,0.2),rgba(109,40,217,0.15));border-radius:15px}#filterDropdown:hover{background:linear-gradient(135deg,rgba(139,92,246,0.5),rgba(109,40,217,0.4));box-shadow:0 4px 15px rgba(139,92,246,0.4)}#filterDropdown:focus{outline:none;box-shadow:0 0 8px 3px rgba(139,92,246,0.5)}#filterDropdown option{font-family:inherit;color:#000;background:#fff;border:none;padding:5px;font-weight:inherit}#filterDropdown option:hover{background:#c8c8c8}.edp-card-img{transition:filter 0.2s ease}.edp-card-img:hover{filter:brightness(70%)}#toggleFanart{padding:10px 20px;font-size:18px;background:rgb(255 255 255 / .15);margin-top:15px;margin-bottom:15px;border:none;border-radius:8px;font-weight:700;font-family:'Poppins',sans-serif;color:#fff;text-decoration:none;cursor:pointer;display:block;margin-left:auto;margin-right:auto;-webkit-backdrop-filter:blur(5em);backdrop-filter:blur(5em);transition:transform 0.2s ease,background-color 0.3s ease,box-shadow 0.3s ease,color 0.3s ease}#toggleFanart:hover{transform:scale(1.1);background:linear-gradient(135deg,rgb(255 0 150 / .4),rgb(0 150 255 / .4));box-shadow:0 6px 20px rgb(0 0 0 / .3),0 0 15px rgb(0 150 255 / .6);color:#fff}#toggleFanart:active{transform:scale(.95);box-shadow:0 3px 12px rgb(0 0 0 / .3)}.edp-slider-bg{background:linear-gradient(145deg,rgba(59,130,246,0.06),rgba(30,64,175,0.03));border-radius:12px;margin:15px 0;padding:15px 0;box-shadow:0 4px 15px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.1);border:1px solid rgba(59,130,246,0.12)}
+.edp-card-meta{display:flex;justify-content:space-between;align-items:center}.edp-card-date{opacity:0.7}.edp-score-badge{padding:1px 8px;border-radius:10px;font-size:0.85em;font-weight:600;line-height:1.5}.edp-score-gold{background:linear-gradient(135deg,#ffd700,#ffb300);color:#1a1a1a}.edp-score-high{background:linear-gradient(135deg,#00c8ff,#0090ff);color:#fff}.edp-score-mid{background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.8)}.edp-score-low{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.5)}.edp-score-none{display:none}.noUncensored{opacity:1;transition:color 0.3s,transform 0.3s,box-shadow 0.3s,filter 0.3s}.noUncensored .button-text,.noUncensored .button-icon{color:grey!important}.melt-away{animation:sandMeltAnimation 1s ease-out forwards}@keyframes sandMeltAnimation{0%{opacity:1}100%{opacity:0}}@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.btn-status{display:inline-block;vertical-align:middle;margin-left:4px}.btn-spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle}.btn-check{display:inline-block;width:18px;height:18px;vertical-align:middle}.my-fanart-image{display:inline-block;margin:8px 10px 20px 10px;vertical-align:top;border-radius:8px;height:27vh;transition:transform 0.3s ease,filter 0.3s ease;min-height:180px}.my-fanart-image-slider{height:20vh!important}.my-fanart-image:hover{transform:scale(1.03);filter:brightness(80%)}.edp-modal{display:none;position:fixed;z-index:1;left:0;top:0;width:100%;height:100%;overflow:hidden;background-color:rgb(0 0 0 / .8);justify-content:center;align-items:center}.edp-modal-content{margin:auto;max-width:70%;max-height:70%;overflow:hidden;opacity:0;transition:opacity 0.3s ease}@media (max-width:768px){.edp-modal-content{max-width:80%;max-height:80%}}.edp-modal-closing .edp-modal-content{animation-name:edpShrinkRotate;animation-duration:0.3s;animation-timing-function:ease-out}.edp-close{color:#fff;position:absolute;width:45px;height:45px;display:flex;justify-content:center;align-items:center;top:30px;right:30px;font-size:30px;font-weight:700;cursor:pointer;transition:background-color 0.3s,transform 0.3s,padding 0.3s;border-radius:50%;padding:0;background-color:rgb(0 0 0 / .5);user-select:none;caret-color:#fff0}.prev,.next{position:absolute;width:40px;height:40px;line-height:40px;justify-content:center;align-items:center;display:flex;top:50%;background-color:rgb(0 0 0 / .5);color:#fff;border:none;cursor:pointer;font-size:35px;font-weight:700;transform:translateY(-50%) translateX(-50%);transition:background-color 0.3s,transform 0.3s,padding 0.3s;border-radius:50%;padding:35px}.prev{left:80px}.next{right:20px}.prev:hover,.next:hover{background-color:rgb(255 255 255 / .3);padding:35px}.edp-close:hover{background-color:rgb(255 255 255 / .3)}@keyframes edpShrinkRotate{0%{transform:scale(1)}100%{transform:scale(0)}}.click-smaller{transform:scale(.9) translate(-50%,-50%);transition:transform 0.2s}.prev.disabled,.next.disabled{color:grey!important;cursor:default}@keyframes shake{0%{transform:translateX(0)}25%{transform:translateX(-10px)}50%{transform:translateX(10px)}75%{transform:translateX(-10px)}100%{transform:translateX(0)}}.edp-modal-caption{position:fixed;bottom:132px;left:50%;transform:translateX(-50%);text-align:center;font-size:16px;color:#fff;background-color:rgb(0 0 0 / .6);padding:5px 10px;border-radius:5px}@media screen and (max-width:480px){.edp-modal-caption{bottom:160px}}.modal-thumbs{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:0 44px;max-width:80vw;height:84px;overflow-x:auto;overflow-y:hidden;background:rgb(0 0 0/.6);border-radius:10px;scrollbar-width:none;align-items:center;scroll-behavior:smooth;-webkit-mask-image:linear-gradient(to right,transparent 0%,black 14%,black 86%,transparent 100%);mask-image:linear-gradient(to right,transparent 0%,black 14%,black 86%,transparent 100%)}.modal-thumbs::-webkit-scrollbar{display:none}.modal-thumbs img{height:50px;border-radius:4px;cursor:pointer;opacity:.5;transform:scale(1);transform-origin:center;transition:height 0.25s ease-out,transform 0.25s ease-out,opacity 0.25s ease;border:none;flex-shrink:0}.modal-thumbs img:hover{opacity:.78}.edp-video{position:absolute;width:100%;height:100%;object-fit:contain;z-index:1;pointer-events:auto;transition:opacity 0.5s ease}.cardOverlayContainer>.fab,.cardOverlayContainer>.chkItemSelectContainer,.cardOverlayContainer>.cardOverlayButton-br{z-index:2}.copy-link{color:lightblue;cursor:pointer;display:inline-block;transition:transform 0.1s ease}.copy-link:active{transform:scale(.95)}.media-info-item{display:block;width:100%;margin-top:10px;text-align:left}.media-info-item a{padding:5px 10px;background:rgb(255 255 255 / .15);margin-bottom:5px;margin-right:5px;-webkit-backdrop-filter:blur(5em);backdrop-filter:blur(5em);font-weight:600;transition:transform 0.2s ease,background-color 0.3s ease,box-shadow 0.3s ease,color 0.3s ease;text-decoration:none;color:#fff;border-radius: 20px}.media-info-item a:hover{transform:scale(1.05)}.pageButton{cursor:pointer;padding:6px 14px;background:rgb(255 255 255 / .15);border-radius:15px;box-shadow:0 2px 6px rgba(0,0,0,0.2);transition:all 0.3s ease;backdrop-filter:blur(10px);border:1px solid rgb(255 255 255 / .2)}.pageButton:hover{background:rgb(255 255 255 / .25);box-shadow:0 4px 12px rgba(0,0,0,0.3);transform:scale(1.03)}#pageInput-actorPage::-webkit-inner-spin-button,#pageInput-actorPage::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}#pageInput-actorPage{-moz-appearance:textfield;appearance:none;height:auto;text-align:center;padding:6px 10px;font-family:inherit;font-size:inherit;font-weight:inherit;line-height:inherit;background:rgb(255 255 255 / .1);border:1px solid rgb(255 255 255 / .2);border-radius:10px;color:#fff;width:50px;transition:all 0.3s ease}#pageInput-actorPage:focus{outline:none;border-color:rgb(255 255 255 / .4);box-shadow:0 0 8px rgba(255,255,255,0.2)}#filterDropdown{width:auto;backdrop-filter:blur(10px);color:#fff;transition:all 0.3s ease;margin-left:10px;font-family:inherit;padding:6px 12px;font-weight:inherit;line-height:inherit;border:1px solid rgba(139,92,246,0.3);background:linear-gradient(135deg,rgba(139,92,246,0.2),rgba(109,40,217,0.15));border-radius:15px}#filterDropdown:hover{background:linear-gradient(135deg,rgba(139,92,246,0.5),rgba(109,40,217,0.4));box-shadow:0 4px 15px rgba(139,92,246,0.4)}#filterDropdown:focus{outline:none;box-shadow:0 0 8px 3px rgba(139,92,246,0.5)}#filterDropdown option{font-family:inherit;color:#000;background:#fff;border:none;padding:5px;font-weight:inherit}#filterDropdown option:hover{background:#c8c8c8}.edp-card-img{transition:filter 0.2s ease}.edp-card-img:hover{filter:brightness(70%)}#toggleFanart{padding:10px 20px;font-size:18px;background:rgb(255 255 255 / .15);margin-top:15px;margin-bottom:15px;border:none;border-radius:8px;font-weight:700;color:#fff;text-decoration:none;cursor:pointer;display:block;margin-left:auto;margin-right:auto;-webkit-backdrop-filter:blur(5em);backdrop-filter:blur(5em);transition:transform 0.2s ease,background-color 0.3s ease,box-shadow 0.3s ease,color 0.3s ease}#toggleFanart:hover{transform:scale(1.1);color:#fff}#toggleFanart:active{transform:scale(.95);box-shadow:0 3px 12px rgb(0 0 0 / .3)}.edp-slider-bg{background:linear-gradient(145deg,rgba(59,130,246,0.06),rgba(30,64,175,0.03));border-radius:12px;margin:15px 0;padding:15px 0;box-shadow:0 4px 15px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.1);border:1px solid rgba(59,130,246,0.12)}
 .edp-section-header{display:flex;align-items:center}.edp-count-badge{margin-left:auto;font-size:0.85em;padding:3px 14px;border-radius:20px;background:rgba(255,255,255,0.06);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.55);font-weight:500;letter-spacing:0.5px;box-shadow:0 2px 8px rgba(0,0,0,0.12),inset 0 1px 0 rgba(255,255,255,0.08);transition:all 0.3s ease}.edp-count-badge:hover{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.75);border-color:rgba(255,255,255,0.18)}
 .jv-reviews-modal{position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .2s ease}.jv-reviews-modal.visible{opacity:1}.jv-reviews-modal.closing{opacity:0}.jv-reviews-backdrop{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.75);backdrop-filter:blur(8px)}.jv-reviews-content{position:relative;width:90%;max-width:600px;max-height:85vh;background:linear-gradient(145deg,#1a1a2e,#16213e);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;transform:scale(.9);transition:transform .2s ease}.jv-reviews-modal.visible .jv-reviews-content{transform:scale(1)}.jv-reviews-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:linear-gradient(90deg,rgba(139,92,246,.2),rgba(109,40,217,.15));border-bottom:1px solid rgba(255,255,255,.1)}.jv-reviews-title-wrapper{display:flex;flex-direction:column;gap:4px}.jv-reviews-title{margin:0;font-size:1.2em;font-weight:600;color:#fff}.jv-reviews-subtitle{font-size:.85em;color:rgba(255,255,255,.6)}.jv-reviews-close{background:none;border:none;color:rgba(255,255,255,.7);cursor:pointer;padding:8px;border-radius:50%;transition:all .2s}.jv-reviews-close:hover{background:rgba(255,255,255,.1);color:#fff}.jv-reviews-sort-hint{padding:8px 20px;font-size:.8em;color:rgba(255,255,255,.5);border-bottom:1px solid rgba(255,255,255,.05)}.jv-reviews-list{flex:1;overflow-y:auto;padding:12px 16px}.jv-reviews-loading,.jv-reviews-empty{text-align:center;padding:40px;color:rgba(255,255,255,.6)}.jv-review-item{padding:14px;margin-bottom:10px;background:rgba(255,255,255,.03);border-radius:12px;border:1px solid rgba(255,255,255,.05);transition:all .2s}.jv-review-item:hover{background:rgba(255,255,255,.06);border-color:rgba(139,92,246,.2)}.jv-review-header{display:flex;align-items:center;gap:10px;margin-bottom:10px}.jv-review-avatar{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#333}.jv-review-user-info{flex:1}.jv-review-username{font-size:.9em;font-weight:500;color:#fff;display:flex;align-items:center;gap:6px}.jv-review-tag{font-size:.7em;padding:2px 6px;border-radius:4px;font-weight:500}.jv-review-tag.vip{background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000}.jv-review-tag.contributor{background:linear-gradient(135deg,#00bcd4,#009688);color:#fff}.jv-review-meta{font-size:.8em;color:rgba(255,255,255,.5);display:flex;align-items:center;gap:8px;margin-top:2px}.jv-review-score{color:#ffc107;font-weight:500}.jv-review-content{font-size:.9em;line-height:1.6;color:rgba(255,255,255,.85);word-break:break-word}.jv-review-footer{display:flex;justify-content:flex-end;margin-top:8px}.jv-review-likes{display:flex;align-items:center;gap:4px;font-size:.8em;color:rgba(255,255,255,.4)}.jv-reviews-pagination{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:rgba(0,0,0,.2);border-top:1px solid rgba(255,255,255,.05)}.jv-reviews-page-info{font-size:.85em;color:rgba(255,255,255,.6)}.jv-reviews-page-btns{display:flex;gap:8px}.jv-page-btn{padding:6px 14px;border:none;border-radius:8px;background:rgba(139,92,246,.2);color:#fff;cursor:pointer;font-size:.85em;transition:all .2s}.jv-page-btn:hover:not(:disabled){background:rgba(139,92,246,.4)}.jv-page-btn:disabled{opacity:.4;cursor:not-allowed}.jv-credentials-content{position:relative;width:90%;max-width:400px;background:linear-gradient(145deg,#1a1a2e,#16213e);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);overflow:hidden;transform:scale(.9);transition:transform .2s ease}.jv-reviews-modal.visible .jv-credentials-content{transform:scale(1)}.jv-credentials-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:linear-gradient(90deg,rgba(139,92,246,.2),rgba(109,40,217,.15));border-bottom:1px solid rgba(255,255,255,.1)}.jv-credentials-title{margin:0;font-size:1.1em;font-weight:600;color:#fff}.jv-credentials-body{padding:20px}.jv-credentials-desc{margin:0 0 20px;font-size:.9em;color:rgba(255,255,255,.7);line-height:1.5}.jv-credentials-desc small{color:rgba(255,255,255,.5)}.jv-credentials-form{display:flex;flex-direction:column;gap:16px}.jv-form-group{display:flex;flex-direction:column;gap:6px}.jv-form-group label{font-size:.85em;color:rgba(255,255,255,.7)}.jv-form-group input{padding:10px 14px;border:1px solid rgba(255,255,255,.15);border-radius:8px;background:rgba(255,255,255,.05);color:#fff;font-size:.95em;transition:all .2s}.jv-form-group input:focus{outline:none;border-color:rgba(139,92,246,.5);box-shadow:0 0 0 3px rgba(139,92,246,.15)}.jv-form-group input::placeholder{color:rgba(255,255,255,.3)}.jv-credentials-error{margin-top:12px;padding:10px;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);border-radius:8px;color:#ef4444;font-size:.85em}.jv-credentials-footer{padding:16px 20px;background:rgba(0,0,0,.2);border-top:1px solid rgba(255,255,255,.05);display:flex;flex-direction:column;gap:12px}.jv-credentials-actions{display:flex;justify-content:flex-end;gap:10px}.jv-btn{padding:8px 18px;border:none;border-radius:8px;font-size:.9em;cursor:pointer;transition:all .2s}.jv-btn-primary{background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff}.jv-btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(139,92,246,.4)}.jv-btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none}.jv-btn-secondary{background:rgba(255,255,255,.1);color:rgba(255,255,255,.8)}.jv-btn-secondary:hover{background:rgba(255,255,255,.15)}.jv-btn-danger{background:rgba(239,68,68,.15);color:#ef4444;font-size:.8em}.jv-btn-danger:hover{background:rgba(239,68,68,.25)}#myitemsContainer-series{transition:opacity 0.3s ease}.edp-fading{opacity:0}#pageInput-series::-webkit-inner-spin-button,#pageInput-series::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}#pageInput-series{-moz-appearance:textfield;appearance:none;height:auto;text-align:center;padding:6px 10px;font-family:inherit;font-size:inherit;font-weight:inherit;line-height:inherit;background:rgb(255 255 255 / .1);border:1px solid rgb(255 255 255 / .2);border-radius:10px;color:#fff;width:50px;transition:all 0.3s ease}#pageInput-series:focus{outline:none;border-color:rgb(255 255 255 / .4);box-shadow:0 0 8px rgba(255,255,255,0.2)}.edp-btn-disabled{opacity:0.35;pointer-events:none}#myDbSeriesSlider .itemsViewSettingsContainer{display:flex;gap:10px;align-items:center;background:rgba(255,255,255,0.03);border-radius:12px;padding:8px 16px}${OS_current === 'ipad' ? '.my-fanart-image{height:18vh}.my-fanart-image-slider{height:14vh!important}.edp-modal{padding-bottom:5vh;box-sizing:border-box}' : ''}${OS_current === 'iphone' ? '.modal-thumbs{bottom:100px}.edp-modal-caption{bottom:196px}.edp-modal{padding-bottom:15vh;box-sizing:border-box}' : ''}
-.edp-add-modal{display:none;position:fixed;z-index:999999;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.85);justify-content:center;align-items:center;backdrop-filter:blur(8px)}.edp-add-modal-content{background:#1a1a2e;border-radius:16px;width:min(90vw,700px);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);overflow:hidden}.edp-add-modal-header{padding:20px 24px;display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);gap:12px;flex-shrink:0}.edp-add-modal-header input{flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#fff;padding:10px 16px;font-size:1em;outline:none;transition:border-color 0.3s}.edp-add-modal-header input:focus{border-color:rgba(59,130,246,0.6);box-shadow:0 0 8px rgba(59,130,246,0.3)}.edp-add-search-btn{padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;white-space:nowrap}.edp-add-search-btn:hover{transform:scale(1.05);box-shadow:0 4px 12px rgba(59,130,246,0.4)}.edp-add-search-btn:disabled{opacity:0.5;pointer-events:none}.edp-add-modal-results{padding:16px 24px;overflow-y:auto;flex:1;display:flex;flex-wrap:wrap;gap:12px;align-content:flex-start}.edp-add-result-card{width:calc(33.33% - 8px);cursor:pointer;border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);transition:all 0.3s ease}.edp-add-result-card:hover{transform:translateY(-4px);box-shadow:0 8px 20px rgba(0,0,0,0.3);border-color:rgba(59,130,246,0.4)}.edp-add-result-card.edp-added{opacity:0.5;pointer-events:none;border-color:rgba(0,200,0,0.4)}.edp-add-result-card img{width:100%;aspect-ratio:2/3;object-fit:cover}.edp-add-card-info{padding:8px;font-size:0.85em}.edp-add-card-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}.edp-add-card-year{color:rgba(255,255,255,0.5);font-size:0.85em}.edp-add-modal-close{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.3s;flex-shrink:0}.edp-add-modal-close:hover{background:rgba(255,255,255,0.2);transform:scale(1.1)}.edp-add-modal-msg{text-align:center;color:rgba(255,255,255,0.5);padding:40px;font-size:1.1em;width:100%}@media(max-width:600px){.edp-add-result-card{width:calc(50% - 6px)}.edp-add-modal-content{width:95vw;max-height:90vh}}`;
+.edp-add-modal{display:none;position:fixed;z-index:999999;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.85);justify-content:center;align-items:center;backdrop-filter:blur(8px)}.edp-add-modal-content{background:#1a1a2e;border-radius:16px;width:min(90vw,700px);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);overflow:hidden}.edp-add-modal-header{padding:20px 24px;display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);gap:12px;flex-shrink:0}.edp-add-modal-header input{flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);border-radius:10px;color:#fff;padding:10px 16px;font-size:1em;outline:none;transition:border-color 0.3s}.edp-add-modal-header input:focus{border-color:rgba(59,130,246,0.6);box-shadow:0 0 8px rgba(59,130,246,0.3)}.edp-add-search-btn{padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;font-weight:600;cursor:pointer;transition:all 0.3s ease;white-space:nowrap}.edp-add-search-btn:hover{transform:scale(1.05);box-shadow:0 4px 12px rgba(59,130,246,0.4)}.edp-add-search-btn:disabled{opacity:0.5;pointer-events:none}.edp-add-modal-results{padding:16px 24px;overflow-y:auto;flex:1;display:flex;flex-wrap:wrap;gap:12px;align-content:flex-start}.edp-add-result-card{width:calc(33.33% - 8px);cursor:pointer;border-radius:10px;overflow:hidden;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);transition:all 0.3s ease}.edp-add-result-card:hover{transform:translateY(-4px);box-shadow:0 8px 20px rgba(0,0,0,0.3);border-color:rgba(59,130,246,0.4)}.edp-add-result-card.edp-added{opacity:0.5;pointer-events:none;border-color:rgba(0,200,0,0.4)}.edp-add-result-card img{width:100%;aspect-ratio:2/3;object-fit:cover}.edp-add-card-info{padding:8px;font-size:0.85em}.edp-add-card-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}.edp-add-card-year{color:rgba(255,255,255,0.5);font-size:0.85em}.edp-add-modal-close{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.1);border:none;color:#fff;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.3s;flex-shrink:0}.edp-add-modal-close:hover{background:rgba(255,255,255,0.2);transform:scale(1.1)}.edp-add-modal-msg{text-align:center;color:rgba(255,255,255,0.5);padding:40px;font-size:1.1em;width:100%}@media(max-width:600px){.edp-add-result-card{width:calc(50% - 6px)}.edp-add-modal-content{width:95vw;max-height:90vh}}
+/* ===================== EDP redesign layer (purple identity) ===================== */
+/* 番号 code — distinctive tabular mono, brand accent */
+.copy-link{font-family:var(--edp-font-code);font-weight:700;letter-spacing:.04em;color:var(--edp-accent-bright);text-shadow:0 0 10px rgba(var(--edp-accent-rgb),.4)}
+.copy-link:hover{color:#fff;text-shadow:0 0 14px rgba(var(--edp-accent-rgb),.7)}
+/* same wipe gesture as the section-title underline, as a hover affordance on the code */
+.copy-link{position:relative}
+.copy-link::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:2px;border-radius:2px;background:var(--edp-grad-accent);box-shadow:var(--edp-glow-accent);transform:scaleX(0);transform-origin:left;transition:transform var(--edp-dur) var(--edp-ease);pointer-events:none}
+.copy-link:hover::after{transform:scaleX(1)}
+/* resolution + score badges — tabular mono so digits line up */
+.mediaInfoItem-border{font-family:var(--edp-font-code);letter-spacing:.06em}
+.edp-score-badge{font-family:var(--edp-font-code);letter-spacing:.02em}
+/* external-link chips + fanart toggle — display face, unified purple hover (was pink→blue) */
+.media-info-item a,#toggleFanart{font-family:var(--edp-font-display)}
+.media-info-item a:hover{background:var(--edp-grad-cool);box-shadow:0 4px 15px rgba(0,0,0,.25),var(--edp-glow-accent)}
+#toggleFanart:hover{background:var(--edp-grad-cool);box-shadow:0 6px 20px rgba(0,0,0,.3),var(--edp-glow-accent)}
+/* injected slider wrapper — purple-tinted glass + faint accent top edge */
+.edp-slider-bg{position:relative;background:linear-gradient(145deg,rgba(var(--edp-accent-rgb),.07),rgba(var(--edp-accent-rgb),.02));border-color:rgba(var(--edp-accent-rgb),.14)}
+.edp-slider-bg::before{content:"";position:absolute;top:0;left:18px;right:18px;height:1px;background:linear-gradient(90deg,transparent,rgba(var(--edp-accent-rgb),.6),transparent);opacity:.7;pointer-events:none}
+/* signature motion: gradient accent bar wipes in under each section title */
+.edp-slider-bg h2.sectionTitle{position:relative;font-family:var(--edp-font-display);letter-spacing:.01em}
+.edp-slider-bg h2.sectionTitle::after{content:"";position:absolute;left:0;bottom:-6px;height:3px;width:42px;border-radius:2px;background:var(--edp-grad-accent);box-shadow:var(--edp-glow-accent);transform:scaleX(0);transform-origin:left;animation:edpUnderlineWipe .5s var(--edp-ease) .15s forwards}
+@keyframes edpUnderlineWipe{to{transform:scaleX(1)}}
+/* count badge — purple tint to match identity */
+.edp-count-badge{font-family:var(--edp-font-display);background:rgba(var(--edp-accent-rgb),.12);border-color:rgba(var(--edp-accent-rgb),.25);color:rgba(255,255,255,.7)}
+.edp-count-badge:hover{background:rgba(var(--edp-accent-rgb),.22);border-color:rgba(var(--edp-accent-rgb),.4);color:#fff;box-shadow:var(--edp-glow-accent)}
+/* ===== cinematic fanart frames ===== */
+/* each still sits in a clipping frame so it can zoom *inside* its border on hover */
+.edp-fanart-frame{position:relative;display:inline-block;vertical-align:top;margin:8px 10px 20px 10px;border-radius:var(--edp-r-card);overflow:hidden;line-height:0;background:rgba(var(--edp-accent-rgb),.04);border:1px solid var(--edp-glass-border);box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform var(--edp-dur) var(--edp-ease),box-shadow var(--edp-dur) var(--edp-ease),border-color var(--edp-dur) var(--edp-ease)}
+.edp-fanart-frame .my-fanart-image{display:block;margin:0;border-radius:0;transition:transform .45s var(--edp-ease),filter var(--edp-dur) var(--edp-ease)}
+.edp-fanart-frame:hover{transform:translateY(-4px);border-color:rgba(var(--edp-accent-rgb),.55);box-shadow:0 12px 30px rgba(0,0,0,.55),var(--edp-glow-accent)}
+.edp-fanart-frame:hover .my-fanart-image{transform:scale(1.08);filter:brightness(.92)}
+/* index badge — glassy, fades in on hover, never intercepts the click */
+.edp-fanart-idx{position:absolute;top:8px;left:8px;z-index:2;min-width:22px;height:22px;padding:0 7px;display:flex;align-items:center;justify-content:center;font-family:var(--edp-font-code);font-size:12px;font-weight:700;line-height:1;color:#fff;background:rgba(0,0,0,.55);border:1px solid rgba(var(--edp-accent-rgb),.5);border-radius:var(--edp-r-pill);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 2px 8px rgba(0,0,0,.4);opacity:0;transform:translateY(-4px) scale(.9);transition:opacity var(--edp-dur) var(--edp-ease),transform var(--edp-dur) var(--edp-ease);pointer-events:none}
+.edp-fanart-frame:hover .edp-fanart-idx{opacity:1;transform:translateY(0) scale(1)}
+/* horizontal strip fades out at both edges */
+.edp-fanart-strip{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 3%,#000 97%,transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 3%,#000 97%,transparent 100%)}
+/* slider content that blurs out→in when its title is clicked to reload — frames stay in place, never disappear */
+.edp-fade-host{transition:filter .35s var(--edp-ease),opacity .35s var(--edp-ease);will-change:filter,opacity}
+.edp-fade-host.edp-fading{filter:blur(12px);opacity:.55}
+/* ===================== cinematic staggered page-in =====================
+   Hardened vs the original custom-css version:
+   - whole block lives inside @media (prefers-reduced-motion: no-preference) → motion-sensitive users
+     (and browsers lacking the query) get NO opacity:0, so nothing can ever be stuck invisible.
+   - gated behind .edp-animate-in (added to the view on a FRESH load only, removed ~3.5s later) so the
+     cascade never re-fires when Emby re-renders the title on translate / return-from-player.
+   - animation-fill-mode:both replaces the manual opacity:0 base (handles the pre-delay hidden state).
+   - verified against Emby 4.9 /web/item/item.html: dropped dead .nameContainer / .mediaInfoPrimary,
+     added the sibling .detail-mediaInfoSecondary; delays follow real document order. */
+@media (prefers-reduced-motion: no-preference){
+@keyframes edpDetailPosterIn{0%{opacity:0;transform:translateY(-64px) scale(1.09);filter:blur(12px)}60%{opacity:1}100%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
+@keyframes edpDetailRise{from{opacity:0;transform:translateX(46px);filter:blur(6px)}to{opacity:1;transform:translateX(0);filter:blur(0)}}
+.detailImageContainer-main.edp-poster-pending{opacity:0}
+.detailImageContainer-main.edp-poster-in{animation:edpDetailPosterIn 2.4s cubic-bezier(.22,1,.36,1) both;will-change:transform,opacity,filter}
+.edp-animate-in .detailTextContainer .detailNameContainer,.edp-animate-in .detailTextContainer .detail-mediaInfoPrimary,.edp-animate-in .detailTextContainer .detail-mediaInfoSecondary,.edp-animate-in .detailTextContainer .trackSelections,.edp-animate-in .detailTextContainer .mainDetailButtons,.edp-animate-in .detailTextContainer .tagline,.edp-animate-in .detailTextContainer .birthDate,.edp-animate-in .detailTextContainer .overview-container,.edp-animate-in .detailTextContainer .directors{animation:edpDetailRise 1s cubic-bezier(.16,1,.3,1) both;will-change:transform,opacity,filter}
+.edp-animate-in .detailTextContainer .detailNameContainer{animation-delay:.45s}
+.edp-animate-in .detailTextContainer .detail-mediaInfoPrimary,.edp-animate-in .detailTextContainer .detail-mediaInfoSecondary{animation-delay:.57s}
+.edp-animate-in .detailTextContainer .trackSelections{animation-delay:.69s}
+.edp-animate-in .detailTextContainer .mainDetailButtons{animation-delay:.81s}
+.edp-animate-in .detailTextContainer .tagline{animation-delay:.93s}
+.edp-animate-in .detailTextContainer .birthDate{animation-delay:1.05s}
+.edp-animate-in .detailTextContainer .overview-container{animation-delay:1.17s}
+.edp-animate-in .detailTextContainer .directors{animation-delay:1.29s}
+/* injected sliders arrive async (after the entrance marker is gone); animate on insert so the page reads as authored top-to-bottom. */
+@keyframes edpSliderIn{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+.edp-slider-bg{animation:edpSliderIn .5s var(--edp-ease) both}
+}`;
 
     loadConfig().then(() => {
         // monitor dom changements
@@ -134,7 +218,6 @@
 
             if (e.detail.contextPath.startsWith("/item?id=")) {
                 if (!e.detail.isRestored) {
-                    _resizeListenerArgs = [];
                     !document.getElementById("edpStyle") && loadExtraStyle(edpCss, 'edpStyle');
 
                     observerManager.waitForCondition(
@@ -147,6 +230,7 @@
                         },
                         () => {
                             if (showFlag()) {
+                                triggerDetailEntrance(viewnode);
                                 if (item.Type === 'BoxSet') {
                                     boxSetInit();
                                 } else {
@@ -158,27 +242,36 @@
                 } else {
                     viewnode = e.target;
                     item = viewnode.controller.currentItem;
-                    // 恢复页面：重新注册被 cleanup 断开的 ResizeObserver
-                    const saved = _resizeListenerArgs.slice();
-                    _resizeListenerArgs = [];
-                    saved.forEach(args => addResizeListener(...args));
                     if (item && showFlag() && item.Type != 'BoxSet' && item.Type != "Person") {
-                        actorName = getActorName();
-                        directorName = getActorName(true);
-                        setTimeout(() => {
-                            injectLinks();
-                            javdbTitle();
-                            remoteTrailerInject();
-                            adjustCardOffsets();
-                            adjustSliderWidth();
-                            fanartModal?.init();
-                        }, 1000);
+                        // 从播放页返回时 Emby 会异步重渲染标题/详情区域（onBeginResume → startDataLoad
+                        // → onDataFetched 里 container.innerHTML = html），时机不固定，会把注入冲掉。
+                        // 策略：监听详情区域的 DOM 变化，变化停止 1s 后（防抖）再恢复注入，
+                        // 这样无论 Emby 何时完成重渲染，都能在它之后再注入。
+                        const savedItemId = item.Id;
+                        const watchRoot = qsVisible(".detailMainContainerParent") || viewnode;
+                        let recoverTimer = null;
+                        observerManager.watchChanges('detailRestored', watchRoot, (mutations, stop) => {
+                            clearTimeout(recoverTimer);
+                            recoverTimer = setTimeout(() => {
+                                stop(); // 停止监听，避免恢复操作自身的 DOM 改动再次触发
+                                if (!isStillCurrentItem(savedItemId)) return; // 已切换到其它条目则放弃
+                                actor = getActor();
+                                director = getActor(true);
+                                injectLinks();
+                                javdbTitle();
+                                adjustSliderWidth();
+                                fanartModal?.init();
+                            }, 1000);
+                        }, { childList: true, subtree: true });
                     }
                 }
             }
         });
+    }).catch((e) => {
+        // 兜底：即便 loadConfig 意外失败也不应阻止脚本初始化
+        console.error('emby_detail_page 初始化失败:', e);
     });
-    
+
 
     function clearExpiredCache() {
         const CACHE_PREFIX = "trailerUrl";
@@ -205,18 +298,26 @@
         if (window.cachedConfig) {
             config = window.cachedConfig;
         } else {
-            const response = await fetch('./config.json');
-            if (!response.ok) {
-                console.error(`Failed to fetch config.json: ${response.status} ${response.statusText}`);
-                return; // Exit the function if the file is not found or another error occurs
+            // config.json 是可选的：缺失时脚本以脚本顶部的默认值运行。
+            // 注意有些服务器对未知路径返回 200 + index.html（SPA 回退），
+            // 这种情况下 response.json() 会抛错，必须吞掉，否则整个脚本不初始化。
+            try {
+                const response = await fetch('./config.json');
+                if (response.ok) {
+                    config = await response.json();
+                    window.cachedConfig = config;
+                }
+            } catch (e) {
+                console.warn('config.json 未加载，使用默认配置:', e);
             }
-            config = await response.json();
-            window.cachedConfig = config;
         }
         if (config) {
             //adminUserId = config.adminUserId || adminUserId;
             //googleApiKey = config.googleApiKey || googleApiKey;
             openaiApiKey = config.openaiApiKey || openaiApiKey;
+            openaiUrl = config.openaiUrl || openaiUrl;
+            openaiModel = config.openaiModel || openaiModel;
+            openaiPrompt = config.openaiPrompt || openaiPrompt;
             nameMap = config.nameMap || nameMap;
             prefixDic = config.prefixDic || prefixDic;
             mountMatch = config.mountMatch || mountMatch;
@@ -229,6 +330,52 @@
         style.id = id; // Set the ID for the style element
         style.innerHTML = content; // Set the CSS content
         document.head.appendChild(style); // Append the style element to the document head
+    }
+
+    // 详情页入场动画：仅在「全新进入」时给视图节点加 .edp-animate-in，触发 CSS 里的
+    // 错峰入场（海报下落 + 文字栏依次右滑）。约 3.5s 后移除标记，这样之后 Emby 因
+    // 翻译 / 从播放页返回而重渲染标题时，元素不再带 opacity:0 基态，不会重复播放、也不会卡住不显示。
+    // 减少动态偏好（prefers-reduced-motion）下整段跳过；CSS 的 @media 也做了同样保护。
+    function triggerDetailEntrance(node) {
+        if (!node) return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+        node.classList.add('edp-animate-in');
+        setTimeout(() => node.classList.remove('edp-animate-in'), 3500);
+        // 海报图片走懒加载，可能比页面渲染慢(尤其机械/冷盘读取)。若直接随 .edp-animate-in
+        // 播放动画，图片还没解码出来动画就放完了，等图片到达时会“啪”地突然出现。
+        // 这里把海报先藏住(.edp-poster-pending)，等 <img> 真正 load 后再触发下落动画，
+        // 这样无论盘读多慢，海报永远是优雅地滑入而不是硬弹出。
+        gatePosterEntrance(node);
+    }
+
+    // 等海报图片加载完成后再播放入场动画；带 2.5s 兜底，避免极端慢盘下永久隐藏。
+    function gatePosterEntrance(node) {
+        const poster = node.querySelector('.detailImageContainer-main');
+        if (!poster) return;
+        poster.classList.add('edp-poster-pending');
+        let started = false;
+        const start = () => {
+            if (started) return;
+            started = true;
+            poster.classList.remove('edp-poster-pending');
+            poster.classList.add('edp-poster-in');
+            poster.addEventListener('animationend',
+                () => poster.classList.remove('edp-poster-in'), { once: true });
+        };
+        const t0 = performance.now();
+        const check = () => {
+            if (started) return;
+            const img = poster.querySelector('img');
+            if (img && img.complete && img.naturalWidth > 0) return start(); // 已就绪/缓存命中
+            if (img && !img.dataset.edpPosterBound) {        // <img> 已出现但未加载完，绑定一次
+                img.dataset.edpPosterBound = '1';
+                img.addEventListener('load', start, { once: true });
+                img.addEventListener('error', start, { once: true });
+            }
+            if (performance.now() - t0 > 2500) return start(); // 兜底
+            requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
     }
 
     // 把没有图片的 person 排到后面
@@ -265,7 +412,6 @@
         translateInject();
         javdbButtonInit();
         embyButtonInit();
-        remoteTrailerInject();
     }
 
     function boxSetInit() {
@@ -367,9 +513,6 @@
             }
         }
 
-        addResizeListener('#mySimilarSection', '.itemsContainer', '.virtualScrollItem');
-        adjustCardOffset('#mySimilarSection', '.itemsContainer', '.virtualScrollItem');
-
         if (OS_current !== 'iphone' && item.Type === 'Movie') {
             addHoverEffect(sliderElement.querySelector(".itemsContainer"));
         }
@@ -382,15 +525,33 @@
         });
     }
 
+    // 点击标题重载时的优雅淡出/淡入。淡出与网络请求并行,等淡出完成(约 300ms)再换内容、淡入。
+    function edpFadeOut(container) {
+        if (!container) return Promise.resolve();
+        container.classList.add('edp-fade-host', 'edp-fading');
+        return new Promise(r => setTimeout(r, 300));
+    }
+    function edpFadeIn(container) {
+        if (!container) return;
+        void container.offsetHeight; // 提交布局,确保从 opacity:0 起步再过渡
+        container.classList.remove('edp-fading');
+    }
+
     async function refreshSimilar() {
         const savedItemId = item.Id;
         const slider = qsVisible('#mySimilarSection');
         if (!slider) return;
 
+        const itemsContainer = slider.querySelector(".itemsContainer");
+        const fadeDone = edpFadeOut(itemsContainer); // 立即淡出,与请求并行
+
         const similarItems = await fetchSimilarItems();
         if (!isStillCurrentItem(savedItemId)) return;
 
+        await fadeDone;
+
         if (similarItems.length === 0) {
+            edpFadeIn(itemsContainer); // 失败:把原内容淡回
             showToast({
                 text: '其他类似加载失败',
                 icon: '<span class="material-symbols-outlined">search_off</span>',
@@ -398,9 +559,8 @@
             return;
         }
 
-        const itemsContainer = slider.querySelector(".itemsContainer");
         itemsContainer.innerHTML = actorMoreHtml(similarItems);
-        adjustCardOffset('#mySimilarSection', '.itemsContainer', '.virtualScrollItem');
+        edpFadeIn(itemsContainer);
 
         if (OS_current !== 'iphone' && item.Type === 'Movie') {
             addHoverEffect(itemsContainer);
@@ -474,11 +634,17 @@
         titleElement.appendChild(link);
         titleElement.appendChild(document.createTextNode(remainingText));
 
-        // 监听标题区域变化，当被重置时重新应用
+        // 监听标题区域变化，当被 Emby 重新渲染时重新应用。
+        // 触发重渲染的场景：updateItem（翻译按钮）→ 服务器广播 LibraryChanged →
+        // ItemPage 调 reloadItem → onDataFetched 执行 detailNameContainer.innerHTML = html，
+        // 整个 .itemName-primary 节点被替换。
+        // 因此必须监听稳定的父节点 .detailNameContainer（Emby 复用、不会重建），
+        // 监听 .itemName-primary 本身会因节点被替换而失效。
+        const nameContainer = titleElement.closest('.detailNameContainer') || detailMainContainer;
         observerManager.remove('javdbTitle'); // 移除旧的监听器
-        observerManager.watchChanges('javdbTitle', titleElement, (mutations, stop) => {
+        observerManager.watchChanges('javdbTitle', nameContainer, (mutations, stop) => {
             // 检查是否被重置（copy-link 消失了）
-            if (!titleElement.querySelector('.copy-link')) {
+            if (!nameContainer.querySelector('.copy-link')) {
                 stop(); // 停止当前监听
                 setTimeout(() => javdbTitle(), 100); // 重新应用
             }
@@ -655,7 +821,7 @@
 
             if (trimmedText === 'JP-18+' || trimmedText === 'NC-17') {
                 mediaItem.style.fontWeight = 'bold';
-                mediaItem.style.fontFamily = "'Georgia', serif";
+                mediaItem.style.fontFamily = "var(--edp-font-code, 'Chivo Mono', monospace)";
             } else if (timeRegexWithHoursAndMinutes.test(trimmedText) || timeRegexHoursOnly.test(trimmedText) || timeRegexMinutesOnly.test(trimmedText)) {
                 const ticks = item.RunTimeTicks;
 
@@ -726,7 +892,7 @@
                 mediaItem.textContent = resolutionLabel;
 
                 // Apply some font styling to the mediaItem element
-                mediaItem.style.fontFamily = "'Georgia', serif";  // Nicer font family
+                mediaItem.style.fontFamily = "var(--edp-font-code, 'Chivo Mono', monospace)";  // tabular mono for resolution badge
                 mediaItem.style.fontWeight = "bold";                 // Bold text
 
                 mediaItem.classList.add('mediaInfoItem-border');
@@ -1347,9 +1513,6 @@
             sliderElement.classList.add('edp-slider-bg');
             const similarSection = qsVisible(".similarSection");
             similarSection.insertAdjacentElement('beforebegin', sliderElement);
-
-            addResizeListener(`#${sliderId}`, '.actorMoreItemsContainer', '.virtualScrollItem');
-            adjustCardOffset(`#${sliderId}`, '.actorMoreItemsContainer', '.virtualScrollItem');
         }
     }
 
@@ -1402,7 +1565,7 @@
             banner = `
 		    <div class="verticalSection verticalSection-cards emby-scrollbuttons-scroller">
 			    <h2 class="sectionTitle sectionTitle-cards padded-left padded-left-page padded-right">${text}</h2>
-                <div is="emby-scroller" class="emby-scroller padded-top-focusscale padded-bottom-focusscale padded-left padded-left-page padded-right scrollX hiddenScrollX scrollFrameX" data-mousewheel="false" data-focusscroll="true" data-horizontal="true">
+                <div is="emby-scroller" class="emby-scroller edp-fanart-strip padded-top-focusscale padded-bottom-focusscale padded-left padded-left-page padded-right scrollX hiddenScrollX scrollFrameX" data-mousewheel="false" data-focusscroll="true" data-horizontal="true">
 			        ${html}
                 </div>
 		    </div>`;
@@ -1458,11 +1621,8 @@
             const isActorLayout = layout === 'actor';
             const sectionClass = `verticalSection verticalSection-cards${isActorLayout ? ' actorMoreSection' : ''} emby-scrollbuttons-scroller`;
             const containerClass = isActorLayout
-                ? 'scrollSlider focuscontainer-x itemsContainer focusable actorMoreItemsContainer scrollSliderX emby-scrollbuttons-scrollSlider virtualItemsContainer virtual-scroller-overflowvisible virtual-scroller'
-                : 'focusable focuscontainer-x itemsContainer scrollSlider scrollSliderX emby-scrollbuttons-scrollSlider virtualItemsContainer virtual-scroller-overflowvisible virtual-scroller';
-            const containerStyle = isActorLayout
-                ? 'white-space: nowrap; min-width: 2412px; height: 351px;'
-                : 'white-space: nowrap; min-width: 2400px; height: 265px;';
+                ? 'scrollSlider focuscontainer-x itemsContainer focusable actorMoreItemsContainer scrollSliderX emby-scrollbuttons-scrollSlider edp-fade-host'
+                : 'focusable focuscontainer-x itemsContainer scrollSlider scrollSliderX emby-scrollbuttons-scrollSlider edp-fade-host';
 
             sliderHtml = `
             <div class="${sectionClass}">
@@ -1473,7 +1633,7 @@
                     ${badgeHtml}
                 </div>
                 <div is="emby-scroller" class="emby-scroller padded-top-focusscale padded-bottom-focusscale padded-left padded-left-page padded-right scrollX hiddenScrollX scrollFrameX" data-mousewheel="false" data-focusscroll="true" data-horizontal="true">
-                    <div is="emby-itemscontainer" class="${containerClass}" data-focusabletype="nearest" data-virtualscrolllayout="horizontal-grid" style="${containerStyle}" data-minoverhang="1" layout="horizontal-grid">
+                    <div is="emby-itemscontainer" class="${containerClass}" data-focusabletype="nearest">
                         ${html}
                     </div>
                 </div>
@@ -1486,13 +1646,11 @@
     }
 
     function createItemContainer(itemInfo, increment) {
-        let distance, imgUrl, typeWord;
+        let imgUrl, typeWord;
         if (isPreferThumb()) {
-            distance = OS_current === 'ipad' ? 260 : OS_current === 'iphone' ? 300 : 350;
             imgUrl = ApiClient.getImageUrl(itemInfo.Id, { type: "Thumb", tag: itemInfo.ImageTags.Thumb, maxHeight: 360, maxWidth: 640 });
             typeWord = 'backdrop';
         } else {
-            distance = OS_current === 'ipad' ? 182 : OS_current === 'iphone' ? 120 : 200;
             imgUrl = ApiClient.getImageUrl(itemInfo.Id, { type: "Primary", tag: itemInfo.ImageTags.Primary, maxHeight: 330, maxWidth: 220 });
             typeWord = 'portrait';
         }
@@ -1501,7 +1659,7 @@
         let name = itemInfo.Name;
 
         const itemContainer = `
-            <div data-id="${itemInfo.Id}" data-localtrailer-count="${itemInfo.LocalTrailerCount || 0}" data-remotetrailer-count="${itemInfo.RemoteTrailers?.length || 0}" class="virtualScrollItem card ${typeWord}Card card-horiz ${typeWord}Card-horiz card-hoverable card-autoactive" tabindex="0" draggable="false" style="inset: 0px auto auto ${distance * increment}px;">
+            <div data-id="${itemInfo.Id}" data-localtrailer-count="${itemInfo.LocalTrailerCount || 0}" data-remotetrailer-count="${itemInfo.RemoteTrailers?.length || 0}" class="card ${typeWord}Card card-horiz ${typeWord}Card-horiz card-hoverable card-autoactive" tabindex="0" draggable="false">
                 <div class="cardBox cardBox-touchzoom cardBox-bottompadded">
                     <button onclick="Emby.Page.showItem('${itemInfo.Id}')" tabindex="-1" class="itemAction cardContent-button cardContent cardImageContainer cardContent-background cardContent-bxsborder-fv coveredImage coveredImage-noScale cardPadder-${typeWord} edp-card-img">
                         <img draggable="false" alt=" " class="cardImage cardImage-bxsborder-fv coveredImage coveredImage-noScale" loading="lazy" decoding="async" src="${imgUrl}">
@@ -1520,14 +1678,13 @@
     }
 
     function createDbContainer(itemInfo, increment) {
-        const distance = OS_current === 'ipad' ? 182 : OS_current === 'iphone' ? 120 : 200;
         const imgUrl = itemInfo.ImgSrc;
         const code = itemInfo.Code;
         const name = itemInfo.Name;
         const link = `https://javdb.com${itemInfo.Link}?locale=zh`;
 
         const itemContainer = `
-            <div  class="virtualScrollItem card portraitCard card-horiz portraitCard-horiz card-hoverable card-autoactive" tabindex="0" draggable="false" style="inset: 0px auto auto ${distance * increment}px;">
+            <div class="card portraitCard card-horiz portraitCard-horiz card-hoverable card-autoactive" tabindex="0" draggable="false">
                 <div class="cardBox cardBox-touchzoom cardBox-bottompadded">
                     <button onclick="window.open('${link}', '_blank')" tabindex="-1" class="itemAction cardContent-button cardContent cardImageContainer cardContent-background cardContent-bxsborder-fv coveredImage coveredImage-noScale cardPadder-portrait edp-card-img">
                         <img draggable="false" alt=" " class="cardImage cardImage-bxsborder-fv coveredImage coveredImage-noScale" loading="lazy" decoding="async" src="${imgUrl}">
@@ -1554,7 +1711,6 @@
     }
 
     function createItemContainerLarge(itemInfo, increment) {
-        let distance = OS_current === 'ipad' ? 260 : OS_current === 'iphone' ? 300 : 350;
         const imgUrl = itemInfo.ImgSrc;
         const title = `${itemInfo.Code} ${itemInfo.Name}`;
         const link = `https://javdb.com${itemInfo.Link}?locale=zh`;
@@ -1566,7 +1722,7 @@
         let itemContainer;
         if (item.Type != 'BoxSet') {
             itemContainer = `
-            <div class="virtualScrollItem card backdropCard card-horiz backdropCard-horiz card-hoverable card-autoactive edp-card-enter" tabindex="0" draggable="true" style="inset: 0px auto auto ${distance * increment}px; animation-delay:${increment * 0.05}s">
+            <div class="card backdropCard card-horiz backdropCard-horiz card-hoverable card-autoactive edp-card-enter" tabindex="0" draggable="true" style="animation-delay:${increment * 0.05}s">
                 <div class="cardBox cardBox-touchzoom cardBox-bottompadded">
                     <button onclick="window.open('${link}', '_blank')" tabindex="-1" class="itemAction cardContent-button cardContent cardImageContainer cardContent-background cardContent-bxsborder-fv coveredImage coveredImage-noScale cardPadder-backdrop edp-card-img${scoreHighlight}">
                         <img draggable="false" alt=" " class="cardImage cardImage-bxsborder-fv coveredImage coveredImage-noScale" loading="lazy" decoding="async" src="${imgUrl}">
@@ -1689,7 +1845,7 @@
             let ratio = (width && height) ? (width / height).toFixed(2) : (16 / 9).toFixed(2);
 
             // Add the filename as a data attribute
-            html += `<img class='my-fanart-image ${addSlider ? 'my-fanart-image-slider' : ''}' src="${url}" alt="${index}" loading="lazy" data-filename="${filename || ''}" data-ratio="${ratio}"/>`;
+            html += `<div class="edp-fanart-frame"><img class='my-fanart-image ${addSlider ? 'my-fanart-image-slider' : ''}' src="${url}" alt="${index}" loading="lazy" data-filename="${filename || ''}" data-ratio="${ratio}"/><span class="edp-fanart-idx">${index + 1}</span></div>`;
         }
         html += `</div>`;
 
@@ -1895,10 +2051,12 @@
         // ===== 图片点击 =====
 
         _handleTapOrClick(event, fanartSection) {
-            const target = event.target;
-            if (!target.classList.contains('my-fanart-image')) return;
+            // 点击图片或其外层 .edp-fanart-frame(含序号角标)都能打开灯箱
+            const img = event.target.closest('.edp-fanart-frame')?.querySelector('.my-fanart-image')
+                || (event.target.classList.contains('my-fanart-image') ? event.target : null);
+            if (!img) return;
 
-            const index = Array.from(fanartSection.querySelectorAll('.my-fanart-image')).indexOf(target);
+            const index = Array.from(fanartSection.querySelectorAll('.my-fanart-image')).indexOf(img);
             this._showImage(index);
         }
 
@@ -2382,46 +2540,26 @@
         })
     }
 
-    let _resizeListenerArgs = [];
-
-    function addResizeListener(sectionId, containerStr, cardStr) {
-        const key = 'resize_' + sectionId;
-        if (observerManager.observers.has(key)) return;
-        const sectionEl = document.querySelector(`${VISIBLE_SCROLLER} ${sectionId}`)
-                       ?? viewnode?.querySelector(sectionId);
-        if (!sectionEl) return;
-        const ro = new ResizeObserver(() => {
-            if (viewnode && document.contains(viewnode)) {
-                adjustCardOffset(sectionId, containerStr, cardStr);
-            }
-        });
-        ro.observe(sectionEl);
-        observerManager.observers.set(key, ro);
-        if (!_resizeListenerArgs.some(a => a[0] === sectionId)) {
-            _resizeListenerArgs.push([sectionId, containerStr, cardStr]);
-        }
-    }
-
     async function actorMoreInject(isDirector = false, excludeIds = []) {
         const savedItemId = item.Id;
         if (item.Type === 'Person') return [];
         try {
-            let name = getActorName(isDirector);
+            let person = getActor(isDirector);
 
-            if (name.length === 0) return [];
+            if (!person) return [];
 
-            isDirector ? (directorName = name) : (actorName = name);
+            isDirector ? (director = person) : (actor = person);
 
-            let moreItems = await getActorMovies(name, excludeIds);
+            let moreItems = await getActorMovies(person, excludeIds);
             if (!isStillCurrentItem(savedItemId)) return [];
 
             const maxRetries = item.People?.length || 5;
             let attempts = 1;
 
             while (moreItems.length === 0 && !isDirector && attempts < maxRetries) {
-                name = getActorName(isDirector);
-                actorName = name; // update global actorName
-                moreItems = await getActorMovies(name, excludeIds);
+                person = getActor(isDirector);
+                actor = person;
+                moreItems = await getActorMovies(person, excludeIds);
                 if (!isStillCurrentItem(savedItemId)) return [];
                 attempts++;
             }
@@ -2430,16 +2568,14 @@
 
             if (moreItems.length > 0 && aboutSection) {
 
-                const sliderElement = createSlider({ text: name, html: actorMoreHtml(moreItems), isActor: !isDirector, layout: 'actor' });
+                const sliderElement = createSlider({ text: person.name, html: actorMoreHtml(moreItems), isActor: !isDirector, layout: 'actor' });
 
                 const sliderId = isDirector ? "myDirectorMoreSlider" : "myActorMoreSlider";
                 sliderElement.id = sliderId;
+                sliderElement.dataset.personId = person.id;
+                sliderElement.dataset.personName = person.name;
 
                 aboutSection.insertAdjacentElement('beforebegin', sliderElement);
-
-                addResizeListener(`#${sliderId}`, '.actorMoreItemsContainer', '.virtualScrollItem');
-
-                adjustCardOffset(`#${sliderId}`, '.actorMoreItemsContainer', '.virtualScrollItem');
 
                 addHoverEffect(sliderElement.querySelector(".itemsContainer"));
 
@@ -2469,8 +2605,11 @@
 
         if (!slider) return;
 
-        let name = isDirector ? directorName : refreshActorName();
-        let moreItems = await getActorMovies(name);
+        const itemsContainer = slider.querySelector(".actorMoreItemsContainer");
+        const fadeDone = edpFadeOut(itemsContainer); // 立即淡出,与请求并行
+
+        let person = isDirector ? director : refreshActor();
+        let moreItems = await getActorMovies(person);
         if (!isStillCurrentItem(savedItemId)) return;
 
 
@@ -2478,32 +2617,33 @@
         let attempts = 1;
 
         while (moreItems.length === 0 && !isDirector && attempts < maxRetries) {
-            name = refreshActorName();
-            moreItems = await getActorMovies(name);
+            person = refreshActor();
+            moreItems = await getActorMovies(person);
             if (!isStillCurrentItem(savedItemId)) return;
             attempts++;
         }
 
+        await fadeDone;
+
         if (moreItems.length === 0) {
+            edpFadeIn(itemsContainer); // 失败:把原内容淡回
             showToast({
-                text: `${name} 更多作品加载失败`,
+                text: `${person?.name ?? ''} 更多作品加载失败`,
                 icon: `<span class="material-symbols-outlined">search_off</span>`,
             });
             return;
         }
 
         if (!isDirector) {
-            actorName = name;
+            actor = person;
+            slider.dataset.personId = person.id;
+            slider.dataset.personName = person.name;
             const title = slider.querySelector(".sectionTitle");
-            title.textContent = `${name} 其他作品`;
-        } 
+            title.textContent = `${person.name} 其他作品`;
+        }
 
-        const itemsContainer = slider.querySelector(".actorMoreItemsContainer");
-        itemsContainer.innerHTML = '';
-
-        const html = actorMoreHtml(moreItems);
-        itemsContainer.innerHTML = html;
-        adjustCardOffset(`#${sliderId}`, '.actorMoreItemsContainer', '.virtualScrollItem');
+        itemsContainer.innerHTML = actorMoreHtml(moreItems);
+        edpFadeIn(itemsContainer);
         addHoverEffect(itemsContainer);
     }
 
@@ -2689,19 +2829,29 @@
         return videourl;
     }
 
+    const FALLBACK_DEVICE_PROFILE = { "MaxStaticBitrate": 140000000, "MaxStreamingBitrate": 140000000, "MusicStreamingTranscodingBitrate": 192000, "DirectPlayProfiles": [{ "Container": "mp4,m4v", "Type": "Video", "VideoCodec": "h264,h265,hevc,av1,vp8,vp9", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis" }, { "Container": "mkv", "Type": "Video", "VideoCodec": "h264,h265,hevc,av1,vp8,vp9", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis" }, { "Container": "flv", "Type": "Video", "VideoCodec": "h264", "AudioCodec": "aac,mp3" }, { "Container": "mov", "Type": "Video", "VideoCodec": "h264", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis" }, { "Container": "opus", "Type": "Audio" }, { "Container": "mp3", "Type": "Audio", "AudioCodec": "mp3" }, { "Container": "mp2,mp3", "Type": "Audio", "AudioCodec": "mp2" }, { "Container": "aac", "Type": "Audio", "AudioCodec": "aac" }, { "Container": "m4a", "AudioCodec": "aac", "Type": "Audio" }, { "Container": "mp4", "AudioCodec": "aac", "Type": "Audio" }, { "Container": "flac", "Type": "Audio" }, { "Container": "webma,webm", "Type": "Audio" }, { "Container": "wav", "Type": "Audio", "AudioCodec": "PCM_S16LE,PCM_S24LE" }, { "Container": "ogg", "Type": "Audio" }, { "Container": "webm", "Type": "Video", "AudioCodec": "vorbis,opus", "VideoCodec": "av1,VP8,VP9" }], "TranscodingProfiles": [{ "Container": "aac", "Type": "Audio", "AudioCodec": "aac", "Context": "Streaming", "Protocol": "hls", "MaxAudioChannels": "2", "MinSegments": "1", "BreakOnNonKeyFrames": true }, { "Container": "aac", "Type": "Audio", "AudioCodec": "aac", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "mp3", "Type": "Audio", "AudioCodec": "mp3", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "opus", "Type": "Audio", "AudioCodec": "opus", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "wav", "Type": "Audio", "AudioCodec": "wav", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "opus", "Type": "Audio", "AudioCodec": "opus", "Context": "Static", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "mp3", "Type": "Audio", "AudioCodec": "mp3", "Context": "Static", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "aac", "Type": "Audio", "AudioCodec": "aac", "Context": "Static", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "wav", "Type": "Audio", "AudioCodec": "wav", "Context": "Static", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "mkv", "Type": "Video", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis", "VideoCodec": "h264,h265,hevc,av1,vp8,vp9", "Context": "Static", "MaxAudioChannels": "2", "CopyTimestamps": true }, { "Container": "m4s,ts", "Type": "Video", "AudioCodec": "ac3,mp3,aac", "VideoCodec": "h264,h265,hevc", "Context": "Streaming", "Protocol": "hls", "MaxAudioChannels": "2", "MinSegments": "1", "BreakOnNonKeyFrames": true, "ManifestSubtitles": "vtt" }, { "Container": "webm", "Type": "Video", "AudioCodec": "vorbis", "VideoCodec": "vpx", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "mp4", "Type": "Video", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis", "VideoCodec": "h264", "Context": "Static", "Protocol": "http" }], "ContainerProfiles": [], "CodecProfiles": [{ "Type": "VideoAudio", "Codec": "aac", "Conditions": [{ "Condition": "Equals", "Property": "IsSecondaryAudio", "Value": "false", "IsRequired": "false" }] }, { "Type": "VideoAudio", "Conditions": [{ "Condition": "Equals", "Property": "IsSecondaryAudio", "Value": "false", "IsRequired": "false" }] }, { "Type": "Video", "Codec": "h264", "Conditions": [{ "Condition": "EqualsAny", "Property": "VideoProfile", "Value": "high|main|baseline|constrained baseline|high 10", "IsRequired": false }, { "Condition": "LessThanEqual", "Property": "VideoLevel", "Value": "62", "IsRequired": false }] }, { "Type": "Video", "Codec": "hevc", "Conditions": [] }], "SubtitleProfiles": [{ "Format": "vtt", "Method": "Hls" }, { "Format": "eia_608", "Method": "VideoSideData", "Protocol": "hls" }, { "Format": "eia_708", "Method": "VideoSideData", "Protocol": "hls" }, { "Format": "vtt", "Method": "External" }, { "Format": "ass", "Method": "External" }, { "Format": "ssa", "Method": "External" }], "ResponseProfiles": [{ "Type": "Video", "Container": "m4v", "MimeType": "video/mp4" }] };
+
+    let deviceProfilePromise = null;
+    function loadDeviceProfile(thisItem) {
+        if (!deviceProfilePromise) {
+            deviceProfilePromise = (async () => {
+                try {
+                    const p = await getDeviceProfile(thisItem);
+                    return p && Object.keys(p).length ? p : FALLBACK_DEVICE_PROFILE;
+                } catch {
+                    return FALLBACK_DEVICE_PROFILE;
+                }
+            })();
+        }
+        return deviceProfilePromise;
+    }
+
     async function getStreamUrl(thisItem = item) {
 
         let videourl = null;
 
-        if (Object.keys(deviceProfile).length === 0) {
-            deviceProfile = await getDeviceProfile(thisItem);
-        }
-
-        if (!deviceProfile || Object.keys(deviceProfile).length === 0) {
-            deviceProfile = { "MaxStaticBitrate": 140000000, "MaxStreamingBitrate": 140000000, "MusicStreamingTranscodingBitrate": 192000, "DirectPlayProfiles": [{ "Container": "mp4,m4v", "Type": "Video", "VideoCodec": "h264,h265,hevc,av1,vp8,vp9", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis" }, { "Container": "mkv", "Type": "Video", "VideoCodec": "h264,h265,hevc,av1,vp8,vp9", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis" }, { "Container": "flv", "Type": "Video", "VideoCodec": "h264", "AudioCodec": "aac,mp3" }, { "Container": "mov", "Type": "Video", "VideoCodec": "h264", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis" }, { "Container": "opus", "Type": "Audio" }, { "Container": "mp3", "Type": "Audio", "AudioCodec": "mp3" }, { "Container": "mp2,mp3", "Type": "Audio", "AudioCodec": "mp2" }, { "Container": "aac", "Type": "Audio", "AudioCodec": "aac" }, { "Container": "m4a", "AudioCodec": "aac", "Type": "Audio" }, { "Container": "mp4", "AudioCodec": "aac", "Type": "Audio" }, { "Container": "flac", "Type": "Audio" }, { "Container": "webma,webm", "Type": "Audio" }, { "Container": "wav", "Type": "Audio", "AudioCodec": "PCM_S16LE,PCM_S24LE" }, { "Container": "ogg", "Type": "Audio" }, { "Container": "webm", "Type": "Video", "AudioCodec": "vorbis,opus", "VideoCodec": "av1,VP8,VP9" }], "TranscodingProfiles": [{ "Container": "aac", "Type": "Audio", "AudioCodec": "aac", "Context": "Streaming", "Protocol": "hls", "MaxAudioChannels": "2", "MinSegments": "1", "BreakOnNonKeyFrames": true }, { "Container": "aac", "Type": "Audio", "AudioCodec": "aac", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "mp3", "Type": "Audio", "AudioCodec": "mp3", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "opus", "Type": "Audio", "AudioCodec": "opus", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "wav", "Type": "Audio", "AudioCodec": "wav", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "opus", "Type": "Audio", "AudioCodec": "opus", "Context": "Static", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "mp3", "Type": "Audio", "AudioCodec": "mp3", "Context": "Static", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "aac", "Type": "Audio", "AudioCodec": "aac", "Context": "Static", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "wav", "Type": "Audio", "AudioCodec": "wav", "Context": "Static", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "mkv", "Type": "Video", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis", "VideoCodec": "h264,h265,hevc,av1,vp8,vp9", "Context": "Static", "MaxAudioChannels": "2", "CopyTimestamps": true }, { "Container": "m4s,ts", "Type": "Video", "AudioCodec": "ac3,mp3,aac", "VideoCodec": "h264,h265,hevc", "Context": "Streaming", "Protocol": "hls", "MaxAudioChannels": "2", "MinSegments": "1", "BreakOnNonKeyFrames": true, "ManifestSubtitles": "vtt" }, { "Container": "webm", "Type": "Video", "AudioCodec": "vorbis", "VideoCodec": "vpx", "Context": "Streaming", "Protocol": "http", "MaxAudioChannels": "2" }, { "Container": "mp4", "Type": "Video", "AudioCodec": "ac3,eac3,mp3,aac,opus,flac,vorbis", "VideoCodec": "h264", "Context": "Static", "Protocol": "http" }], "ContainerProfiles": [], "CodecProfiles": [{ "Type": "VideoAudio", "Codec": "aac", "Conditions": [{ "Condition": "Equals", "Property": "IsSecondaryAudio", "Value": "false", "IsRequired": "false" }] }, { "Type": "VideoAudio", "Conditions": [{ "Condition": "Equals", "Property": "IsSecondaryAudio", "Value": "false", "IsRequired": "false" }] }, { "Type": "Video", "Codec": "h264", "Conditions": [{ "Condition": "EqualsAny", "Property": "VideoProfile", "Value": "high|main|baseline|constrained baseline|high 10", "IsRequired": false }, { "Condition": "LessThanEqual", "Property": "VideoLevel", "Value": "62", "IsRequired": false }] }, { "Type": "Video", "Codec": "hevc", "Conditions": [] }], "SubtitleProfiles": [{ "Format": "vtt", "Method": "Hls" }, { "Format": "eia_608", "Method": "VideoSideData", "Protocol": "hls" }, { "Format": "eia_708", "Method": "VideoSideData", "Protocol": "hls" }, { "Format": "vtt", "Method": "External" }, { "Format": "ass", "Method": "External" }, { "Format": "ssa", "Method": "External" }], "ResponseProfiles": [{ "Type": "Video", "Container": "m4v", "MimeType": "video/mp4" }] };
-        }
-
-        const streamUrls = await ApiClient.getPlaybackInfo(thisItem.Id, {}, deviceProfile);
+        const profile = await loadDeviceProfile(thisItem);
+        const streamUrls = await ApiClient.getPlaybackInfo(thisItem.Id, {}, profile);
         let streamUrl = streamUrls.MediaSources.find(ms => ms.Protocol === "File");
         if (!streamUrl) {
             streamUrl = streamUrls.MediaSources.find(ms => ms.Protocol === "Http");
@@ -2845,100 +2995,9 @@
         return expandBtn
     }
 
-    function remoteTrailerInject() {
-        if (!item.RemoteTrailers || item.RemoteTrailers.length === 0) return
-        const detailImageContainer = qsVisible(".detailMainContainer .detailImageContainer");
-        if (!detailImageContainer) return
-
-        if (detailImageContainer.querySelector("#myRemoteTrailerBtn")) return
-
-        let cardOverlay = detailImageContainer.querySelector(".cardOverlayContainer");
-
-        if (!cardOverlay) {
-            observerManager.waitForElement(
-                'remoteTrailer',
-                detailImageContainer,
-                '.cardOverlayContainer',
-                remoteTrailerInit,
-                10000
-            );
-        } else {
-            remoteTrailerInit(cardOverlay);
-        }
-
-        function remoteTrailerInit(card) {
-            const btn = card.querySelector("button");
-            if (!btn || btn.dataset.action === "none") return
-            btn.dataset.action = "none";
-            btn.style.display = 'none';
-            const videoUrl = normalizeTrailerUrl(item.RemoteTrailers[0].Url);
-            const btnNew = createPlayOverlayButton();
-            btnNew.addEventListener("click", (e) => {
-                e.preventDefault();
-                e.stopPropagation();   // prevent Emby default play behavior
-
-                openVideoInModal(videoUrl, item.Name);
-            });
-            detailImageContainer.appendChild(btnNew);
-        }
-
-        function createPlayOverlayButton() {
-            const btn = document.createElement("button");
-
-            btn.type = "button";
-
-            btn.className =
-                "fab cardOverlayButton-fab buttonItems-item " +
-                "cardOverlayFab-primary button-hoveraccent md-icon " +
-                "md-icon-fill autortl emby-button button-hoverable";
-
-            btn.dataset.action = "none";
-            btn.title = "播放预告片";
-            btn.id = "myRemoteTrailerBtn"
-            // Icon content (Emby uses special unicode)
-            btn.textContent = ""; 
-
-            return btn;
-        }
-    }
-    function normalizeTrailerUrl(videoUrl) {
-
-        if (!videoUrl) return null
-        let url = videoUrl.trim();
-
-        // --- 1. Handle DMM domain ---
-        if (url.includes("https://cc3001.dmm.co.jp")) {
-            return url;
-        }
-
-        // --- 2. Handle YouTube ---
-        if (url.includes("youtube.com") || url.includes("youtu.be")) {
-            let videoId = "";
-
-            // Case A: youtu.be/VIDEOID
-            const shortMatch = url.match(/youtu\.be\/([^?&]+)/);
-            if (shortMatch) {
-                videoId = shortMatch[1];
-            }
-
-            // Case B: youtube.com/watch?v=VIDEOID
-            const longMatch = url.match(/[?&]v=([^&]+)/);
-            if (longMatch) {
-                videoId = longMatch[1];
-            }
-
-            if (videoId) {
-                return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=0&controls=1&modestbranding=1&playsinline=1`;
-            }
-        }
-
-        // Otherwise return original
-        return url;
-    }
-
     async function javdbActorInject(isDirector = false) {
         const savedItemId = item.Id;
-        const personName = isDirector ? directorName : actorName;
+        const personName = (isDirector ? director : actor)?.name ?? '';
         if (isJP18() && fetchJavDbFlag && personName.length > 0) {
             const personTypeText = isDirector ? '导演' : '演员';
             try {
@@ -2967,8 +3026,6 @@
                     sliderElement2.classList.add('edp-slider-bg');
                     insertSection.insertAdjacentElement('beforebegin', sliderElement2);
 
-                    adjustCardOffset(`#${sectionId}`, '.itemsContainer', '.backdropCard');
-
                     showToast({
                         text: `${personTypeText}更多作品=>加载成功`,
                         icon: `<span class="material-symbols-outlined">check_circle</span>`,
@@ -2995,48 +3052,6 @@
             javDbMovies.map(movie => checkEmbyExist(movie.Code).then(exists => exists ? null : movie))
         );
         return results.filter(Boolean);
-    }
-
-    function adjustCardOffset(sectionStr, containerStr, cardStr) {
-        const scrollerContainer = qsVisible(`${sectionStr} ${containerStr}`);
-        if (!scrollerContainer) return
-        const portraitCards = scrollerContainer.querySelectorAll(cardStr);
-        if (!scrollerContainer) return
-        if (portraitCards.length > 0) {
-
-            const cardWidth = portraitCards[0].offsetWidth; // Get width of the first card with padding and border
-            const cardHeight = portraitCards[0].offsetHeight;
-            const spacing = 0; // Spacing between cards (adjust as needed)
-            const totalCardWidth = cardWidth + spacing;
-
-            // Set min-width of scrollerContainer
-            scrollerContainer.style.minWidth = `${portraitCards.length * totalCardWidth}px`;
-            scrollerContainer.style.height = `${cardHeight}px`;
-
-            for (let child of portraitCards) {
-                child.style.left = `${child.previousElementSibling ? child.previousElementSibling.offsetLeft + totalCardWidth : 0}px`;
-            }
-
-        }
-    }
-
-    function adjustCardOffsets() {
-        const sliders = [
-            '#myActorMoreSlider',
-            '#myDirectorMoreSlider',
-            '#myDbActorSlider',
-            '#myDbDirectorSlider',
-            '#myDbSeriesSlider',
-            '#mySimilarSlider',
-            '#mySimilarSection'
-        ];
-
-        const container = '.itemsContainer';
-        const item = '.virtualScrollItem';
-
-        sliders.forEach(slider => {
-            adjustCardOffset(slider, container, item);
-        });
     }
 
     function isJP18() {
@@ -3263,11 +3278,6 @@
             secondaryText: `系列: ${seriesName}`
         });
 
-        if (!isBoxSet) {
-            adjustCardOffset('#myDbSeriesSlider', '.itemsContainer', '.backdropCard');
-            addResizeListener('#myDbSeriesSlider', '.itemsContainer', '.backdropCard');
-        }
-
         // Phase 2: continue scanning remaining items in background
         if (hasMore) {
             (async () => {
@@ -3368,36 +3378,41 @@
     }
 
 
-    function getActorName(isDirector = false) {
-        const h2Element = qsVisible(`${isDirector ? "#myDirectorMoreSlider" : "#myActorMoreSlider"} .sectionTitle-cards`);
-
-        if (h2Element) return getPartBefore(h2Element.textContent, " ");
-
+    function getActor(isDirector = false) {
+        const slider = qsVisible(isDirector ? "#myDirectorMoreSlider" : "#myActorMoreSlider");
+        if (slider?.dataset.personId) {
+            return { id: slider.dataset.personId, name: slider.dataset.personName };
+        }
         const personType = isDirector ? 'Director' : 'Actor';
-        const actorNames = item.People?.filter(person => person.Type === personType).map(person => person.Name) || [];
-
-        return actorNames.length ? pickRandomLink(actorNames) : '';
+        const people = item.People?.filter(p => p.Type === personType) || [];
+        if (!people.length) return null;
+        const picked = pickRandomLink(people);
+        return picked ? { id: picked.Id, name: picked.Name } : null;
     }
 
-    function refreshActorName() {
-        const actorNames = item.People?.filter(person => person.Type === 'Actor').map(person => person.Name) || [];
-        return actorNames.length > 1 ? pickRandomLink(actorNames.filter(name => name !== actorName)) : actorName;
+    function refreshActor() {
+        const people = item.People?.filter(p => p.Type === 'Actor') || [];
+        if (people.length <= 1) return actor;
+        const others = people.filter(p => p.Id !== actor?.id);
+        const picked = pickRandomLink(others);
+        return picked ? { id: picked.Id, name: picked.Name } : actor;
     }
 
-    async function getActorMovies(name = actorName, excludeIds = []) {
+    async function getActorMovies(person, excludeIds = []) {
+        if (!person?.id) return [];
         const actorMoreMovies = await ApiClient.getItems(
             ApiClient.getCurrentUserId(),
             {
                 Recursive: true,
                 IncludeItemTypes: 'Movie, Trailer, Series',
                 Fields: 'ProductionYear,LocalTrailerCount,RemoteTrailers',
-                Person: name,
+                PersonIds: person.id,
             }
         );
 
         if (actorMoreMovies.Items.length > 0) {
             let moreItems = Array.from(actorMoreMovies.Items);
-            if (name != actorName && excludeIds && excludeIds.length > 0) {
+            if (person.id !== actor?.id && excludeIds && excludeIds.length > 0) {
                 moreItems = moreItems.filter(movie => !excludeIds.some(excludeId => movie.Id === excludeId));
             }
 
@@ -3408,7 +3423,7 @@
             }
             return moreItems;
         } else {
-            return []; // Return null or handle the failure case accordingly
+            return [];
         }
     }
 
@@ -4262,7 +4277,8 @@
             // Create the anchor element
             var linkButton = document.createElement("a");
             linkButton.setAttribute("is", "emby-linkbutton");
-            linkButton.setAttribute("class", "button-link button-link-color-inherit button-link-fontweight-inherit nobackdropfilter emby-button");
+            // edp-injected-link 作为标记，便于 Emby 重渲染后检测注入是否被冲掉
+            linkButton.setAttribute("class", "button-link button-link-color-inherit button-link-fontweight-inherit nobackdropfilter emby-button edp-injected-link");
             linkButton.setAttribute("href", value);
             linkButton.setAttribute("target", "_blank");
             //linkButton.style.color = 'yellow'; 
@@ -4274,6 +4290,19 @@
 
             // Insert the anchor element at the beginning of itemLinks
             itemLinks.insertAdjacentElement('afterbegin', linkButton);
+        });
+
+        // 监听外部链接区域变化：Emby 重新渲染时（updateItem → 服务器广播 LibraryChanged →
+        // ItemPage.reloadItem → onDataFetched 执行 itemLinks.innerHTML = ...）会用
+        // item.ExternalUrls 重建 .itemLinks，把从 Overview 提取注入的链接冲掉。
+        // 监听稳定的 .itemLinks 节点（Emby 复用、不重建），标记消失时重新注入。
+        observerManager.remove('injectLinks'); // 移除旧的监听器
+        observerManager.watchChanges('injectLinks', itemLinks, (mutations, stop) => {
+            // 检查是否被重置（注入标记消失了）
+            if (!itemLinks.querySelector('.edp-injected-link')) {
+                stop(); // 停止当前监听
+                setTimeout(() => injectLinks(), 100); // 重新注入
+            }
         });
 
         function extractLinks(text, startLine) {
@@ -4465,7 +4494,7 @@
     }
 
     async function translateInject() {
-        if ((OS_current === 'iphone') || openaiApiKey.length === 0 || item.Type === 'Person') return;
+        if ((OS_current === 'iphone') || !openaiApiKey || !openaiUrl || item.Type === 'Person') return;
 
         // Select the element using document.querySelector
         const titleElement = qsVisible(".itemName-primary");
@@ -4498,36 +4527,41 @@
 
 
     async function translateOnlyWithOpenAI(text) {
-        if (!openaiApiKey || openaiApiKey.length === 0) {
+        if (!openaiApiKey || !openaiUrl) {
             return text;
         }
 
-        const prompt = `你是一位专业的日本成人影片翻译专员，非常擅长将日本AV的日文标题或简介翻译成中文AV圈最色情、最地道的表达，熟悉各个AV演员的中文名字及AV专有名词的翻译方法。翻译及处理要求如下：
-                1. 翻译原则：先理解语境，再优化表达并完成翻译。不能机械的直译，不能篡改寓意，不能大范围删改译后内容。确保语法流畅、符合中文阅读习惯，不故意隐去敏感词，翻译风格自然流畅，避免机械翻译或日式断句。英文部分（例如“SEX”）可保留。
-                2. 输出要求：不进行解释或说明，回答必须有且仅有翻译后的中文文本本身。
-                3. 目标受众：中文AV网站用户
-                4. 风格：露骨、下流、直接，允许意译和增强色情张力
-                5. 演员名也要翻译，包括昵称也翻译成中文昵称。
-                请翻译以下内容：
-            ${text}`;
+        let prompt;
+        if (!openaiPrompt) {
+            prompt = text;
+        } else if (openaiPrompt.includes('{content}')) {
+            prompt = openaiPrompt.replace('{content}', text);
+        } else {
+            prompt = openaiPrompt + '\n' + text;
+        }
 
-        const response = await fetch("https://api.openai.com/v1/responses", {
+        const baseUrl = openaiUrl.endsWith('/v1') || openaiUrl.endsWith('/v1/')
+            ? openaiUrl.replace(/\/+$/, '')
+            : openaiUrl.replace(/\/+$/, '') + '/v1';
+        const apiUrl = baseUrl + '/chat/completions';
+
+        const response = await fetch(apiUrl, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${openaiApiKey}`
             },
             body: JSON.stringify({
-                model: "gpt-4.1-mini",
-                temperature: 0.2,
-                input: prompt
+                model: openaiModel,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.7
             })
         });
 
         const data = await response.json();
 
         try {
-            return data.output[0].content[0].text;
+            return data.choices[0].message.content;
         } catch (e) {
             throw new Error("OpenAI translation failed");
         }
